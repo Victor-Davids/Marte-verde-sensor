@@ -1,0 +1,111 @@
+#include <Wire.h>
+#include <Adafruit_BMP085.h>
+#include <DHT.h>
+
+#define DHTPIN 2          
+#define DHTTYPE DHT22     
+#define UV_PIN A0         // Pino analógico para leitura do "Sensor" UV
+
+// --- PINOS DO RADAR DE ÁGUA ---
+const int PIN_TRIG = 9;   
+const int PIN_ECHO = 8;   
+int metrosGlobais = 0;    // Guarda a posição para o relatório
+// ----------------------------------------------
+
+Adafruit_BMP085 bmp;
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(9600);
+  
+  // Inicialização direta dos sensores existentes
+  bmp.begin();
+  dht.begin();
+  
+  // Configuração do pino UV
+  pinMode(UV_PIN, INPUT);
+  
+  // CONFIGURAÇÃO DOS PINOS DO RADAR
+  pinMode(PIN_TRIG, OUTPUT);
+  pinMode(PIN_ECHO, INPUT);
+  
+  Serial.println("Sistema Observação Vida Verde!");
+  Serial.println("----------------------------------------");
+}
+
+void loop() {
+  // Leitura do Sensor Ultrassônico para o Radar de Água
+  digitalWrite(PIN_TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(PIN_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(PIN_TRIG, LOW);
+  
+  long duracaoPulse = pulseIn(PIN_ECHO, HIGH, 20000); // Timeout 20 milisegundos
+  if (duracaoPulse > 0) {
+    int distanciaCm = duracaoPulse * 0.034 / 2;
+    if (distanciaCm < 2) distanciaCm = 2;
+    if (distanciaCm > 40) distanciaCm = 40;
+    metrosGlobais = map(distanciaCm, 2, 40, 0, 50);
+  }
+  
+  // Leituras de Pressão e Temperatura
+  float tempBMP = bmp.readTemperature();
+  float pressaoPa = bmp.readPressure();      
+  float pressaoHpa = (pressaoPa / 100.0) * 0.6; 
+
+  // Leitura de Umidade
+  float umidade = dht.readHumidity();
+
+  // 4. Leitura e Cálculo do Índice UV 
+  int leituraAnalogica = analogRead(UV_PIN);
+  float voltagem = leituraAnalogica * (5.0 / 1023.0); 
+  float indiceUV = voltagem * 10.0; 
+  if (indiceUV > 11.0) indiceUV = 11.0; 
+
+  // --- IMPRESSÃO DOS DADOS MONITOR SERIAL ---
+  
+  // Dados de Pressão e Ambiente
+  Serial.print("Pressao Atmosferica: ");
+  Serial.print(pressaoHpa);
+  Serial.println(" hPa");
+
+  Serial.print("Temperatura: ");
+  Serial.print(tempBMP);
+  Serial.println(" *C");
+
+  // Dados de Umidade
+  if (!isnan(umidade)) {
+    Serial.print("Umidade Relativa: ");
+    Serial.print(umidade);
+    Serial.println(" %");
+  }
+
+  // Sistema de Radiação UV 
+  Serial.print("INDICE UV: ");
+  Serial.println(indiceUV);
+
+  // --- STATUS DE ÁGUA E ANÁLISE DE PLANTIO ---
+  Serial.print("Status do Solo (");
+  Serial.print(metrosGlobais);
+  Serial.print("m): ");
+  
+  if (metrosGlobais >= 15 && metrosGlobais <= 30) {
+    Serial.print("[ALERTA: AGUA ENCONTRADA!] -> ");
+    
+    if (indiceUV >= 3.0) {
+      Serial.println("Radiação nociva para cultivo");
+    } else {
+      Serial.println("Ambiente seguro para cultivo");
+    }
+  } else {
+    Serial.println("Seco");
+    if(umidade >= 30){
+    Serial.println("Presença de Agua no Local Encontrado!");
+    }
+  }
+  
+
+  Serial.println("----------------------------------------");
+  delay(2500); 
+}
